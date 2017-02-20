@@ -1,0 +1,22 @@
+{
+  "name": "errisy-server",
+  "version": "1.0.0",
+  "description": "an out-of-box server for remote-procedure-call style full stack development, use with errisy-rpc",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "nodeJS server",
+    "out-of-box server"
+  ],
+  "author": "Zhenyu Shi",
+  "license": "ISC",
+  "dependencies": {
+    "uuid": "3.0.1",
+    "node-session": "1.2.1",
+    "formidable": "1.1.1",
+    "errisy-fs": "1.0.0",
+    "errisy-rpc": "1.0.0"
+  }
+}
