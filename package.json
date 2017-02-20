@@ -1,6 +1,6 @@
 {
   "name": "errisy-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "an out-of-box server for remote-procedure-call style full stack development, use with errisy-rpc",
   "main": "index.js",
   "scripts": {
