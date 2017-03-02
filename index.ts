@@ -396,7 +396,6 @@ export class FileWhiteListMiddleware implements IPromisedMiddleware {
             filename += this.defaultFile;
             relativePath += this.defaultFile;
         }
-
         if (!Array.isArray(this.whitelist) || !this.whitelist.some(rgx => {
             rgx.lastIndex = undefined;
             return rgx.test(relativePath);
@@ -404,8 +403,6 @@ export class FileWhiteListMiddleware implements IPromisedMiddleware {
             Response404(response, link.pathname);
             return false;
         }
-
-        //console.log('filename', filename);
         let stats: fs.Stats;
         try {
             if (!await efs.exists(filename)) return true;
@@ -487,7 +484,6 @@ export class FrontEndRouterMiddleware implements IPromisedMiddleware {
         if (found) {
             let domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
             let filename = nodepath.join(domainRootDir, decodeURI(found.file));
-            console.log('start to pipe file:', link.pathname, filename);
             return await FileUtilities.PipeFile(request, response, filename);
         }
         else {
@@ -993,7 +989,12 @@ export class RPCMiddleware implements IPromisedMiddleware {
     }
 
     async getServiceClass(filename: string, className: string, link: url.Url, domainRootDir: string): Promise<any> {
-        if (this.dyanmic) {
+
+        if (!this.dyanmic && this.modules[filename]) {
+            let $module = this.modules[filename];
+            return $module[className];
+        }
+
             let data = await efs.readFile(filename);
             let precode = data.toString();
             //let varCGI: string;
@@ -1012,17 +1013,6 @@ export class RPCMiddleware implements IPromisedMiddleware {
 ${
                 precode.replace(/require\s*\(\s*[\'"](\.+[\/a-z_\-\s0-9\.]+)[\'"]\s*\)/ig, (capture: string, ...args: any[]) => {
                     let $file = pathreducer.reduce($directory + '//' + args[0] + '.js');
-
-                    //let $modulePath: string = args[0];
-                    //let $file: string;
-                    //console.log('path capture:', capture, args[0]);
-                    //console.log('module path: ', $modulePath, /^\.{1,2}/i.test($modulePath));
-                    //if (/^\.{1,2}/i.test($modulePath)) {
-                    //    $file = pathreducer.reduce(directoryName + '//' + args[0] + '.js');
-                    //}
-                    //else {
-                    //    $file = pathreducer.reduce(directoryName + '/node_modules/' + args[0] + '/index.js');
-                    //}
 
                     required[requiredIndex] = RPCMiddleware.DynamicRequire(domainRootDir, pathreducer.filename($file), pathreducer.file2pathname($file));
                     let replacement = '$__required[' + requiredIndex + ']';
@@ -1052,13 +1042,12 @@ ${
             let fn: IRPCScript = _script.runInContext(context);
             let $module = fn(); //the module is returned;
 
+            if (!this.dyanmic) {
+                this.modules[filename] = $module;
+            }
+
             return $module[className]; //this is the class type
-        }
-        else {
-            if (!this.modules[filename]) this.modules[filename] = require(filename);
-            let $module = this.modules[filename];
-            return $module[className];
-        }
+
     }
     async handler(request: http.ServerRequest, response: http.ServerResponse) {
         let link = url.parse(decodeURI(request.url));
@@ -1139,19 +1128,31 @@ ${
         }
         catch (ex) {
             console.log(`***** RPC Call Error ${(new Date).toLocaleTimeString()} *****\n`, ex);
-            if (this.dyanmic) { //throw the error back to the client in debugging mode
-                response.writeHead(500, {
+            if (ex instanceof rpc.RPCError) {
+                response.writeHead(200, {
                     "Content-Type": "application/json"
                 });
                 response.end(JSON.stringify({
                     error: ex,
                     success: false
-                }));
+                })); //send RPCError to the client
                 return;
             }
             else {
-                Response500(response, link.path); //only show internal server error in production mode
-                return;
+                if (this.dyanmic) { //throw the error back to the client in debugging mode
+                    response.writeHead(200, {
+                        "Content-Type": "application/json"
+                    });
+                    response.end(JSON.stringify({
+                        error: ex,
+                        success: false
+                    }));
+                    return;
+                }
+                else {
+                    Response500(response, link.path); //only show internal server error in production mode
+                    return;
+                }
             }
         }
     }

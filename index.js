@@ -649,7 +649,6 @@ var FrontEndRouterMiddleware = (function () {
                         if (!found) return [3 /*break*/, 2];
                         domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
                         filename = nodepath.join(domainRootDir, decodeURI(found.file));
-                        console.log('start to pipe file:', link.pathname, filename);
                         return [4 /*yield*/, FileUtilities.PipeFile(request, response, filename)];
                     case 1: return [2 /*return*/, _a.sent()];
                     case 2: return [2 /*return*/, true];
@@ -1184,61 +1183,52 @@ var RPCMiddleware = (function () {
     };
     RPCMiddleware.prototype.getServiceClass = function (filename, className, link, domainRootDir) {
         return __awaiter(this, void 0, void 0, function () {
-            var data, precode, scriptFile, $directory_1, required_2, requiredIndex_2, argumentlist, code, context, _script, fn, $module, $module;
+            var $module_1, data, precode, scriptFile, $directory, required, requiredIndex, argumentlist, code, context, _script, fn, $module;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
-                        if (!this.dyanmic) return [3 /*break*/, 2];
+                        if (!this.dyanmic && this.modules[filename]) {
+                            $module_1 = this.modules[filename];
+                            return [2 /*return*/, $module_1[className]];
+                        }
                         return [4 /*yield*/, efs.readFile(filename)];
                     case 1:
                         data = _a.sent();
                         precode = data.toString();
                         scriptFile = pathreducer.reduce(domainRootDir + '\/' + link.pathname);
-                        $directory_1 = pathreducer.file2pathname(scriptFile);
-                        required_2 = {};
-                        requiredIndex_2 = 0;
+                        $directory = pathreducer.file2pathname(scriptFile);
+                        required = {};
+                        requiredIndex = 0;
                         argumentlist = {};
                         code = "(function (){\n\ttry{\n\t\tlet exports = {};\n\t\tlet module = {};\n" + precode.replace(/require\s*\(\s*[\'"](\.+[\/a-z_\-\s0-9\.]+)[\'"]\s*\)/ig, function (capture) {
                             var args = [];
                             for (var _i = 1; _i < arguments.length; _i++) {
                                 args[_i - 1] = arguments[_i];
                             }
-                            var $file = pathreducer.reduce($directory_1 + '//' + args[0] + '.js');
-                            //let $modulePath: string = args[0];
-                            //let $file: string;
-                            //console.log('path capture:', capture, args[0]);
-                            //console.log('module path: ', $modulePath, /^\.{1,2}/i.test($modulePath));
-                            //if (/^\.{1,2}/i.test($modulePath)) {
-                            //    $file = pathreducer.reduce(directoryName + '//' + args[0] + '.js');
-                            //}
-                            //else {
-                            //    $file = pathreducer.reduce(directoryName + '/node_modules/' + args[0] + '/index.js');
-                            //}
-                            required_2[requiredIndex_2] = RPCMiddleware.DynamicRequire(domainRootDir, pathreducer.filename($file), pathreducer.file2pathname($file));
-                            var replacement = '$__required[' + requiredIndex_2 + ']';
-                            requiredIndex_2 += 1;
+                            var $file = pathreducer.reduce($directory + '//' + args[0] + '.js');
+                            required[requiredIndex] = RPCMiddleware.DynamicRequire(domainRootDir, pathreducer.filename($file), pathreducer.file2pathname($file));
+                            var replacement = '$__required[' + requiredIndex + ']';
+                            requiredIndex += 1;
                             return replacement;
                         }) + "\n\t\treturn exports;\n\t}\n\tcatch(ex){\n\tconsole.log('Error:', ex, '@" + scriptFile.replace(/\\/ig, '\\\\') + "');\n\treturn undefined;\n\t}\n})";
                         context = vm.createContext({
                             console: console,
                             require: require,
                             Buffer: Buffer,
-                            __dirname: $directory_1,
+                            __dirname: $directory,
                             __filename: scriptFile,
                             process: process,
-                            $__required: required_2,
+                            $__required: required,
                             module: undefined
                         });
                         _script = vm.createScript(code);
                         code = undefined;
                         fn = _script.runInContext(context);
                         $module = fn();
+                        if (!this.dyanmic) {
+                            this.modules[filename] = $module;
+                        }
                         return [2 /*return*/, $module[className]]; //this is the class type
-                    case 2:
-                        if (!this.modules[filename])
-                            this.modules[filename] = require(filename);
-                        $module = this.modules[filename];
-                        return [2 /*return*/, $module[className]];
                 }
             });
         });
@@ -1331,19 +1321,31 @@ var RPCMiddleware = (function () {
                     case 15:
                         ex_9 = _b.sent();
                         console.log("***** RPC Call Error " + (new Date).toLocaleTimeString() + " *****\n", ex_9);
-                        if (this.dyanmic) {
-                            response.writeHead(500, {
+                        if (ex_9 instanceof rpc.RPCError) {
+                            response.writeHead(200, {
                                 "Content-Type": "application/json"
                             });
                             response.end(JSON.stringify({
                                 error: ex_9,
                                 success: false
-                            }));
+                            })); //send RPCError to the client
                             return [2 /*return*/];
                         }
                         else {
-                            Response500(response, link.path); //only show internal server error in production mode
-                            return [2 /*return*/];
+                            if (this.dyanmic) {
+                                response.writeHead(200, {
+                                    "Content-Type": "application/json"
+                                });
+                                response.end(JSON.stringify({
+                                    error: ex_9,
+                                    success: false
+                                }));
+                                return [2 /*return*/];
+                            }
+                            else {
+                                Response500(response, link.path); //only show internal server error in production mode
+                                return [2 /*return*/];
+                            }
                         }
                         return [3 /*break*/, 16];
                     case 16: return [2 /*return*/];
