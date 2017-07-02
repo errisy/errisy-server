@@ -11,8 +11,9 @@ import * as process from 'process';
 import * as uuid from 'uuid';
 import { mime } from './mime.sys';
 import * as efs from 'errisy-fs';
-import * as rpc from 'errisy-rpc';
-import * as session from 'node-session'; 
+import { RawResponse, RPCError } from './rpc';
+import { IPromisedMiddleware } from './promisedmiddleware';
+import * as session from 'node-session';
 import * as formidable from "formidable";
 
 export interface IServerOptions {
@@ -22,6 +23,8 @@ export interface IServerOptions {
     cert: string;
     session: string;
 }
+
+let __StartUpDir = nodepath.parse(process.argv[1]).dir;
 
 export class Util {
     static GenerateRandomKey(length?: number, chars?: string) {
@@ -34,14 +37,14 @@ export class Util {
         }
         return result;
     }
-    
+
 }
 
 export class HttpServer {
     constructor(public port?: number) {
         if (typeof this.port != 'number') this.port = 80;
-    }  
-    public Middlewares: IPromisedMiddleware[] = []; 
+    }
+    public Middlewares: IPromisedMiddleware[] = [];
     public handler = async (request: http.ServerRequest, response: http.ServerResponse) => {
         for (let i = 0; i < this.Middlewares.length; i++) {
             let middleware = this.Middlewares[i];
@@ -63,7 +66,7 @@ export class HttpServer {
             if (err.code == 'EADDRINUSE') {
                 //try later 
                 console.log('Port ' + this.port + ' is not Free. Server will try again in 0.5 sec ...');
-                setTimeout(()=>that.checkPort(callback), 500);
+                setTimeout(() => that.checkPort(callback), 500);
             }
         });
         tester.once('listening', () => {
@@ -81,14 +84,14 @@ export class HttpServer {
         this.server = http.createServer(this.handler);
         this.server.listen(this.port);
     }
-    public stop () {
+    public stop() {
         this.server.close();
     }
 }
 export class HttpsServer extends HttpServer {
     constructor(public port?: number, public options?: https.ServerOptions) {
         super(port);
-    }  
+    }
 
     public PrivateKeyFile: string;
     public CertificateFile: string;
@@ -105,12 +108,9 @@ export class HttpsServer extends HttpServer {
         this.server.listen(this.port);
     }
 }
-export interface IPromisedMiddleware {
-    //return true if should try next one;
-    handler: (request: http.ServerRequest, response: http.ServerResponse)=>Promise<boolean>;
-}
+
 export class WrappedMiddleware implements IPromisedMiddleware {
-    constructor(public CallbackMiddleware: (request: http.ServerRequest, response: http.ServerResponse, next: () => any)=> any){
+    constructor(public CallbackMiddleware: (request: http.ServerRequest, response: http.ServerResponse, next: () => any) => any) {
 
     }
     public async handler(request: http.ServerRequest, response: http.ServerResponse): Promise<boolean> {
@@ -120,50 +120,91 @@ export class WrappedMiddleware implements IPromisedMiddleware {
                 resolved = true;
                 resolve(true);
             };
-            let terminate = () => { if(!resolved) resolve(false) };
+            let terminate = () => { if (!resolved) resolve(false) };
             this.CallbackMiddleware(request, response, next);
         })
     }
 }
 export interface IDomainSetup {
+    /** the name of domain, which is the id for diagnosis. */
     domain?: string;//domain name
     options?: string;//Regex Options
     regex?: RegExp;
-    root: string| (string[]);
+    root?: string | (string[]);
     middlewares: IPromisedMiddleware[];
 }
 /**
  * domain middleware will handle the request with its own middlewares, it will terminate the middleware chain.
  */
 export class DomainMiddleware implements IPromisedMiddleware {
+    static parseDomRootString(value: string): string|undefined{
+        if(value && (value == '' || value == '/' || /^\./.test(value))){
+            let rootparsed = nodepath.parse(nodepath.parse(process.argv[1]).dir + value);
+            let dir = `${rootparsed.dir}/${rootparsed.name}`;
+            console.log(`combined dir is ${dir}`);
+            if(fs.existsSync(dir) && fs.statSync(dir).isDirectory()){
+                return dir;
+            }
+            else{
+                return undefined;
+            }
+        }
+        else if(value){
+            if(fs.existsSync(value) && fs.statSync(value).isDirectory()){
+                return value;
+            }
+            else{
+                return undefined;
+            }
+        } 
+        else{
+            return undefined;
+        }
+    }
     constructor(public domains?: IDomainSetup[]) {
         if (!Array.isArray(domains)) this.domains = [];
         this.domains = this.domains.map(dom => {
             // accepts multiple root and will work for the first existing one
-            if (Array.isArray(dom.root)) {
-                let found: string;
-                for (let dir of dom.root) {
-                    if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
-                        found = dir;
-                        break;
+            console.log(`domain.root: ${dom.root}`);
+            if(dom.root){
+                if(typeof dom.root == 'string' ){
+                    dom.root = DomainMiddleware.parseDomRootString(dom.root);
+                    if(!dom.root)
+                        dom.root = nodepath.parse(process.argv[1]).dir;
+                }
+                else if (Array.isArray(dom.root)) {
+                    let found: string;
+                    for (let dir of dom.root) {
+                        found = DomainMiddleware.parseDomRootString(dir);
+                        if(found)
+                            break;
+                    }
+                    if (found) {
+                        dom.root = found;
+                    }
+                    else{
+                        dom.root = nodepath.parse(process.argv[1]).dir;
                     }
                 }
-                if (found) {
-                    dom.root = found;
-                    console.log(`use dom root: ${found}`);
-                }
             }
-            if (dom.domain) dom.regex = new RegExp(dom.domain, dom.options ? dom.options : 'ig');
+            else{
+                console.log(`Errisy Server Warning: Root of "${dom.domain}" is undefined!`);
+                dom.root = nodepath.parse(process.argv[1]).dir;
+            }
+            console.log(`Errisy Server: { Domain: "${dom.domain}", Root: "${dom.root}" }`);
+            console.log(dom.middlewares);
+            if (dom.domain) 
+                dom.regex = dom.regex? dom.regex : new RegExp('','ig');
             return dom;
-        }); 
+        });
     }
     private map: { [domain: string]: IDomainSetup } = {};
-    async handler(request: http.ServerRequest, response: http.ServerResponse): Promise<boolean>  {
-        let host = request.headers['host'];
+    async handler(request: http.ServerRequest, response: http.ServerResponse): Promise<boolean> {
+        let host = <string> request.headers['host'];
+        //console.log(`trying middleware: ${host}`);
         if (host) {
             for (let i = 0; i < this.domains.length; i++) {
                 let domain = this.domains[i];
-                domain.regex.lastIndex = undefined;
                 domain.regex.lastIndex = undefined;
                 if (domain.regex.test(host)) {
                     request['$DomainRootDir'] = domain.root;
@@ -191,7 +232,7 @@ export interface IHostRedirctEntry {
     options?: string;
     regex?: RegExp;
     host: string;
-    protocal?: 'http'|'https';
+    protocal?: 'http' | 'https';
 }
 /**
  * redirect to a different domain or protocal.
@@ -201,12 +242,12 @@ export class HostRedirctMiddleware implements IPromisedMiddleware {
     constructor(public entries?: IHostRedirctEntry[]) {
         if (!Array.isArray(this.entries)) this.entries = [];
         this.entries = this.entries.map(opt => {
-            if (opt.domain) opt.regex = new RegExp(opt.domain, opt.options?opt.options:'ig');
+            if (opt.domain) opt.regex = new RegExp(opt.domain, opt.options ? opt.options : 'ig');
             return opt;
         });
     }
     public async handler(request: http.ServerRequest, response: http.ServerResponse): Promise<boolean> {
-        let host = request.headers['host'];
+        let host = <string> request.headers['host'];
         if (host) {
             for (let i = 0; i < this.entries.length; i++) {
                 let entry = this.entries[i];
@@ -339,7 +380,7 @@ export class FileUtilities {
         }
         else {
             //too big (> 200K) that could be stream, we need to send as 200KB block stream
-            let range: string = request.headers['range'];
+            let range: string = <string> request.headers['range'];
             let start: number, end: number;
             let total: number = stats.size;
             let chunksize: number;
@@ -388,7 +429,7 @@ export class FileWhiteListMiddleware implements IPromisedMiddleware {
     async  handler(request: http.ServerRequest, response: http.ServerResponse) {
         //console.log('trying file middleware');
         let link = url.parse(decodeURI(request.url));
-        let domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
+        let domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __StartUpDir;
         let filename = domainRootDir + decodeURI(link.pathname);
 
         let relativePath: string = link.pathname;
@@ -434,7 +475,7 @@ export class FileWhiteListMiddleware implements IPromisedMiddleware {
         }
         else {
             //too big (> 200K) that could be stream, we need to send as 200KB block stream
-            let range: string = request.headers['range'];
+            let range: string = <string> request.headers['range'];
             let start: number, end: number;
             let total: number = stats.size;
             let chunksize: number;
@@ -477,12 +518,12 @@ export class FileWhiteListMiddleware implements IPromisedMiddleware {
     }
 }
 export class FrontEndRouterMiddleware implements IPromisedMiddleware {
-    constructor(public routes: { patterns: RegExp[], file: string }[]) {}
+    constructor(public routes: { patterns: RegExp[], file: string }[]) { }
     async handler(request: http.ServerRequest, response: http.ServerResponse) {
         let link = url.parse(decodeURI(request.url));
         let found = this.routes.find(route => Array.isArray(route.patterns) && route.patterns.length > 0 && route.patterns.some(ptn => ((ptn.lastIndex = undefined), ptn.test(link.pathname))));
         if (found) {
-            let domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
+            let domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __StartUpDir;
             let filename = nodepath.join(domainRootDir, decodeURI(found.file));
             return await FileUtilities.PipeFile(request, response, filename);
         }
@@ -496,10 +537,10 @@ export class FileMiddleware implements IPromisedMiddleware {
     constructor(public defaultFile?: string) {
         if (!this.defaultFile) this.defaultFile = 'index.html';
     }
-    async handler (request: http.ServerRequest, response: http.ServerResponse)  {
+    async handler(request: http.ServerRequest, response: http.ServerResponse) {
         //console.log('trying file middleware');
         let link = url.parse(decodeURI(request.url));
-        let domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
+        let domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __StartUpDir;
         let filename = domainRootDir + decodeURI(link.pathname);
         if (/\/$/.test(filename)) filename += this.defaultFile;
         //console.log('filename', filename);
@@ -534,7 +575,7 @@ export class FileMiddleware implements IPromisedMiddleware {
         }
         else {
             //too big (> 200K) that could be stream, we need to send as 200KB block stream
-            let range: string = request.headers['range'];
+            let range: string = <string> request.headers['range'];
             let start: number, end: number;
             let total: number = stats.size;
             let chunksize: number;
@@ -577,10 +618,10 @@ export class FileMiddleware implements IPromisedMiddleware {
     }
 }
 export class DirectoryMiddleware implements IPromisedMiddleware {
-    async handler    (request: http.ServerRequest, response: http.ServerResponse)   {
+    async handler(request: http.ServerRequest, response: http.ServerResponse) {
         //console.log('trying directory middleware');
         let link = url.parse(request.url);
-        let domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
+        let domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __StartUpDir;
         let filename = domainRootDir + decodeURI(link.pathname);
         //console.log('filename', filename);
         let stats: fs.Stats;
@@ -633,7 +674,7 @@ export class pathreducer {
     static pathname(path: string) {
         let index: number = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('\/'));
         //console.log('[pathreducer]->pathaname: ', path, index, path.length);
-        if (index == path.length -1) return path.substr(0, index + 1);
+        if (index == path.length - 1) return path.substr(0, index + 1);
         return path;
     }
     static file2pathname(path: string) {
@@ -644,16 +685,16 @@ export class pathreducer {
     }
     static toPathname(path: string) {
         let index: number = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('\/'));
-        if (index < path.length-1) return path + '/';
+        if (index < path.length - 1) return path + '/';
         return path;
     }
 }
- 
 
-    /**
-     * This is a task stack that accepts task request from request for high performance tasks running in child process.
-     * You shall use task when *.cgi.js or *.rpc.js can not handle the request in synchronized manner (e.g. taking to long time to complete);
-     */
+
+/**
+ * This is a task stack that accepts task request from request for high performance tasks running in child process.
+ * You shall use task when *.cgi.js or *.rpc.js can not handle the request in synchronized manner (e.g. taking to long time to complete);
+ */
 export class TaskHost {
     private creationCount: number = 0;
     private tasksToRun: TaskInfo[] = [];
@@ -754,13 +795,13 @@ export class TaskHost {
         else {
             return undefined;
         }
-            
+
     }
 }
 export interface TaskInfo {
     id: string;
     filename: string;
-    status?: 'Scheduled'|'Running'|'Error'|'Completed';
+    status?: 'Scheduled' | 'Running' | 'Error' | 'Completed';
     progress?: string;
     /**start time in milliseconds from 1970-1-1 00:00:00*/
     starttime?: number;
@@ -778,8 +819,8 @@ let ptnRPCGETMethod = /^\?([\w\.]+)([&@\-]?)(\w+)&?/; //[@: get &: set null:meth
 interface IRPCScript {
     (): { [id: string]: Function };
 }
-    // References is the dictionary that hold all loaded library;
-    let References: { [id: string]: { [id: string]: ObjectConstructor } } = {};
+// References is the dictionary that hold all loaded library;
+let References: { [id: string]: { [id: string]: ObjectConstructor } } = {};
 
 
 /**
@@ -964,7 +1005,7 @@ export class RPCMiddleware implements IPromisedMiddleware {
                         process: process,
                         $__required: required
                     });
-                    let _script = vm.createScript(code);
+                    let _script = new vm.Script(code); //vm.createScript(code);
                     let fn: Function = _script.runInContext(context);
                     let exported: any = fn();
                     if (!exported) console.log('Exported is undefined: ', fullFilename);
@@ -995,30 +1036,30 @@ export class RPCMiddleware implements IPromisedMiddleware {
             return $module[className];
         }
 
-            let data = await efs.readFile(filename);
-            let precode = data.toString();
-            //let varCGI: string;
-            let scriptFile = pathreducer.reduce(domainRootDir + '\/' + link.pathname);
-            let $directory = pathreducer.file2pathname(scriptFile);
+        let data = await efs.readFile(filename);
+        let precode = data.toString();
+        //let varCGI: string;
+        let scriptFile = pathreducer.reduce(domainRootDir + '\/' + link.pathname);
+        let $directory = pathreducer.file2pathname(scriptFile);
 
-            let required: { [id: number]: any } = {};
-            let requiredIndex: number = 0;
-            let argumentlist: { [id: string]: any } = {};
+        let required: { [id: number]: any } = {};
+        let requiredIndex: number = 0;
+        let argumentlist: { [id: string]: any } = {};
 
-            let code =
-                `(function (){
+        let code =
+            `(function (){
 \ttry{
 \t\tlet exports = {};
 \t\tlet module = {};
 ${
-                precode.replace(/require\s*\(\s*[\'"](\.+[\/a-z_\-\s0-9\.]+)[\'"]\s*\)/ig, (capture: string, ...args: any[]) => {
-                    let $file = pathreducer.reduce($directory + '//' + args[0] + '.js');
+            precode.replace(/require\s*\(\s*[\'"](\.+[\/a-z_\-\s0-9\.]+)[\'"]\s*\)/ig, (capture: string, ...args: any[]) => {
+                let $file = pathreducer.reduce($directory + '//' + args[0] + '.js');
 
-                    required[requiredIndex] = RPCMiddleware.DynamicRequire(domainRootDir, pathreducer.filename($file), pathreducer.file2pathname($file));
-                    let replacement = '$__required[' + requiredIndex + ']';
-                    requiredIndex += 1;
-                    return replacement;
-                })}
+                required[requiredIndex] = RPCMiddleware.DynamicRequire(domainRootDir, pathreducer.filename($file), pathreducer.file2pathname($file));
+                let replacement = '$__required[' + requiredIndex + ']';
+                requiredIndex += 1;
+                return replacement;
+            })}
 \t\treturn exports;
 \t}
 \tcatch(ex){
@@ -1026,49 +1067,53 @@ ${
 \treturn undefined;
 \t}
 })`;
-            //console.log(code);
-            let context = vm.createContext({
-                console: console,
-                require: require,
-                Buffer: Buffer,
-                __dirname: $directory,
-                __filename: scriptFile,
-                process: process,
-                $__required: required,
-                module: undefined
-            });
-            let _script = vm.createScript(code);
-            code = undefined;
-            let fn: IRPCScript = _script.runInContext(context);
-            let $module = fn(); //the module is returned;
+        //console.log(code);
+        let context = vm.createContext({
+            console: console,
+            require: require,
+            Buffer: Buffer,
+            __dirname: $directory,
+            __filename: scriptFile,
+            process: process,
+            $__required: required,
+            module: undefined
+        });
+        let _script =  new vm.Script(code);//vm.createScript(code); 
+        code = undefined;
+        let fn: IRPCScript = _script.runInContext(context);
+        let $module = fn(); //the module is returned;
 
-            if (!this.dyanmic) {
-                this.modules[filename] = $module;
-            }
+        if (!this.dyanmic) {
+            this.modules[filename] = $module;
+        }
 
-            return $module[className]; //this is the class type
+        return $module[className]; //this is the class type
 
     }
-    async handler(request: http.ServerRequest, response: http.ServerResponse) {
+    async handler(request: http.ServerRequest, response: http.ServerResponse): Promise<boolean> {
         let link = url.parse(decodeURI(request.url));
+        //console.log(`RPC url: ${link.pathname}`);
         if (!/\.rpc\.js$/ig.test(link.pathname)) return true;
-        let domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
+        let domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __StartUpDir;
 
         let filename = domainRootDir + link.pathname;
+
+        //console.log(`RPC file name: ${filename}`);
         let that = this;
 
         let stats: fs.Stats;
 
         try {
-            if (!efs.exists) return Response404(response, link.path);
+            if (!efs.exists) Response404(response, link.path);
             stats = await efs.stat(filename);
             if (!stats.isFile()) return true;
         }
         catch (ex) {
-            return Response404(response, link.path);
+            Response404(response, link.path);
+            return true;
         }
 
-        
+
 
         let rpcArgs: any[];
 
@@ -1097,7 +1142,7 @@ ${
         let memberType = matches[2];
         let memberName = matches[3];
 
-        
+
 
         try {
             let $class = await this.getServiceClass(filename, className, link, domainRootDir);
@@ -1108,7 +1153,7 @@ ${
             //console.log('instance created: ', $instance[memberName]);
 
             let result = await <Promise<any>>($instance[memberName].apply($instance, rpcArgs));
-            if (result instanceof rpc.RawResponse) {
+            if (result instanceof RawResponse) {
                 return; //nothing to do there
             }
             else {
@@ -1128,7 +1173,7 @@ ${
         }
         catch (ex) {
             console.log(`***** RPC Call Error ${(new Date).toLocaleTimeString()} *****\n`, ex);
-            if (ex instanceof rpc.RPCError) {
+            if (ex instanceof RPCError) {
                 response.writeHead(200, {
                     "Content-Type": "application/json"
                 });
@@ -1158,14 +1203,15 @@ ${
     }
 }
 
- 
+
 /**
 * This middleware blocks the user from accessing system files on the server;
 * *.sys.js files are server core scripts. they must be kept away from the user;
 */
 export class SYSMiddleware implements IPromisedMiddleware {
-    async  handler(request: http.ServerRequest, response: http.ServerResponse):Promise<boolean> {
+    async  handler(request: http.ServerRequest, response: http.ServerResponse): Promise<boolean> {
         let link = url.parse(decodeURI(request.url));
+        //console.log(`SysMiddleware: ${link.pathname}`);
         if (/\.sys\.js$/ig.test(link.pathname)) {
             Response404(response, link.path);
             return false;
@@ -1225,3 +1271,4 @@ export class RestartOnUncaughtException {
         })
     }
 }
+

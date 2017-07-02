@@ -1,5 +1,58 @@
 # errisy-server
-an out-of-box nodejs server
+an out-of-box nodejs server with front end RPC support for Angular2/4 and mongoDB ORM support (see errisy-mongo)
+1. it allows you to host multiple domains in the same server or cluster.
+2. it wraps all service calls in remote procedure call system that can be easily consumed by Angular2/4.
+3. it comes with the mongoDB ORM wrapper to handle mongoDB with minimal efforts.
+
+## Quick Start
+
+```cmd
+npm install errisy-server
+```
+
+```typescript
+import * as cluster from 'cluster';
+import * as path from 'path';
+import * as os from 'os'; 
+import * as fs from 'fs';
+
+import {HttpServer, HttpsServer, DomainMiddleware, HostRedirctMiddleware, FileWhiteListMiddleware, FileMiddleware, 
+    SessionMiddleware, RPCMiddleware, SYSMiddleware } from 'errisy-server';
+
+// by default you can use cookie session from
+import { CookieSessionMiddleware } from 'errisy-server/cookie.session';
+
+const numberOfProcesses = 1;// os.cpus().length; //get the number of cpus
+
+let sessionKey = 'mPOgkkohV1XhhuyWMfY3MfP2efbulciw'; // 
+
+if (cluster.isMaster) {
+    let workers: cluster.Worker[] = [];
+    for (let i = 0; i < numberOfProcesses; i++) {
+        let worker = cluster.fork();
+        workers.push(worker);
+    }
+}
+else {
+    const session = new CookieSessionMiddleware(config.session);
+    const http = new HttpServer(80);
+    http.Middlewares = [
+        new DomainMiddleware([
+            {
+                domain: 'API Dev Server',
+                regex: /^(localhost|127\.0\.0\.1|192\.168\.0\.13)$/ig,
+                root: '/',
+                middlewares:[
+                    session,
+                    new SYSMiddleware(),
+                    new RPCMiddleware(true, false)
+                ]
+            }
+        ])
+    ]
+    http.start();
+}
+```
 
 ## why not express?
 

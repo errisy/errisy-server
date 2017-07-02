@@ -1,4 +1,5 @@
 "use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 var mime;
 (function (mime_1) {
     function lookup(path) {

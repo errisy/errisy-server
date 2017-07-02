@@ -1,71 +1,35 @@
 {
-  "_from": "errisy-server@1.0.2",
-  "_id": "errisy-server@1.0.2",
-  "_inCache": true,
-  "_location": "/errisy-server",
-  "_nodeVersion": "7.2.0",
-  "_npmOperationalInternal": {
-    "host": "packages-18-east.internal.npmjs.com",
-    "tmp": "tmp/errisy-server-1.0.2.tgz_1487926053747_0.17615595227107406"
-  },
-  "_npmUser": {
-    "name": "errisy",
-    "email": "errisy@gmail.com"
-  },
-  "_npmVersion": "3.10.9",
-  "_phantomChildren": {},
-  "_requested": {
-    "raw": "errisy-server@1.0.2",
-    "scope": null,
-    "escapedName": "errisy-server",
+    "author": {
+        "name": "Zhenyu Shi"
+    },
+    "dependencies": {
+        "errisy-fs": "1.0.0",
+        "formidable": "1.1.1",
+        "uuid": "3.0.1"
+    },
+    "description": "an out-of-box server for remote-procedure-call style full stack development, use with errisy-rpc",
+    "devDependencies": {},
+    "directories": {},
+    "dist": {
+        "shasum": "b2bcb44bbaee4cde07bac6517ce00830bdaf85fd",
+        "tarball": "https://registry.npmjs.org/errisy-server/-/errisy-server-1.0.5.tgz"
+    },
+    "gitHead": "b775d7fd3d6f35cbb03e80a9543643569346744e",
+    "keywords": [
+        "nodeJS server",
+        "out-of-box server"
+    ],
+    "license": "ISC",
+    "main": "index.js",
+    "maintainers": [{
+        "name": "errisy",
+        "email": "errisy@gmail.com"
+    }],
     "name": "errisy-server",
-    "rawSpec": "1.0.2",
-    "spec": "1.0.2",
-    "type": "version"
-  },
-  "_requiredBy": [
-    "/"
-  ],
-  "_resolved": "https://registry.npmjs.org/errisy-server/-/errisy-server-1.0.2.tgz",
-  "_shasum": "f4d79f2e75605e4165da9cd059b37056745187b7",
-  "_shrinkwrap": null,
-  "_spec": "errisy-server@1.0.2",
-  "_where": "C:\\HTTP\\siama\\siama-server",
-  "author": {
-    "name": "Zhenyu Shi"
-  },
-  "dependencies": {
-    "errisy-fs": "1.0.0",
-    "errisy-rpc": "1.0.0",
-    "formidable": "1.1.1",
-    "node-session": "1.2.1",
-    "uuid": "3.0.1"
-  },
-  "description": "an out-of-box server for remote-procedure-call style full stack development, use with errisy-rpc",
-  "devDependencies": {},
-  "directories": {},
-  "dist": {
-    "shasum": "f4d79f2e75605e4165da9cd059b37056745187b7",
-    "tarball": "https://registry.npmjs.org/errisy-server/-/errisy-server-1.0.2.tgz"
-  },
-  "gitHead": "b775d7fd3d6f35cbb03e80a9543643569346744e",
-  "keywords": [
-    "nodeJS server",
-    "out-of-box server"
-  ],
-  "license": "ISC",
-  "main": "index.js",
-  "maintainers": [
-    {
-      "name": "errisy",
-      "email": "errisy@gmail.com"
-    }
-  ],
-  "name": "errisy-server",
-  "optionalDependencies": {},
-  "readme": "ERROR: No README data found!",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "version": "1.0.3"
+    "optionalDependencies": {},
+    "readme": "README.md",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "version": "1.0.7"
 }

@@ -1,9 +1,14 @@
 "use strict";
-var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-};
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+    return function (d, b) {
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     return new (P || (P = Promise))(function (resolve, reject) {
         function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
@@ -12,31 +17,9 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-try{
-    if(require.resolve("errisy-task")){
-        let ErrisyTask = require("errisy-task");
-        __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-            return new (P || (P = ErrisyTask))(function (resolve, reject, t) {
-                if(t){
-                    function fulfilled(value) { try { if(!t.cancelled) step(generator.next(value)); } catch (e) { reject(e); } }
-                    function rejected(value) { try { if(!t.cancelled) step(generator["throw"](value)); } catch (e) { reject(e); } }
-                    function step(result) { t.clear(), result.done ? resolve(result.value) : t.append(new P(function (resolve) { resolve(result.value); })).then(fulfilled, rejected); }
-                    step((generator = generator.apply(thisArg, _arguments || [])).next()); 
-                }
-                else{
-                    function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-                    function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-                    function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
-                    step((generator = generator.apply(thisArg, _arguments || [])).next());
-                }
-            });
-        }
-    }
-}
-catch(e){}
 var __generator = (this && this.__generator) || function (thisArg, body) {
-    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t;
-    return { next: verb(0), "throw": verb(1), "return": verb(2) };
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+    return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
     function verb(n) { return function (v) { return step([n, v]); }; }
     function step(op) {
         if (f) throw new TypeError("Generator is already executing.");
@@ -61,6 +44,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
+Object.defineProperty(exports, "__esModule", { value: true });
 //a simple node server
 var http = require("http");
 var https = require("https");
@@ -74,9 +58,10 @@ var process = require("process");
 var uuid = require("uuid");
 var mime_sys_1 = require("./mime.sys");
 var efs = require("errisy-fs");
-var rpc = require("errisy-rpc");
+var rpc_1 = require("./rpc");
 var session = require("node-session");
 var formidable = require("formidable");
+var __StartUpDir = nodepath.parse(process.argv[1]).dir;
 var Util = (function () {
     function Util() {
     }
@@ -222,25 +207,64 @@ var DomainMiddleware = (function () {
             this.domains = [];
         this.domains = this.domains.map(function (dom) {
             // accepts multiple root and will work for the first existing one
-            if (Array.isArray(dom.root)) {
-                var found = void 0;
-                for (var _i = 0, _a = dom.root; _i < _a.length; _i++) {
-                    var dir = _a[_i];
-                    if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
-                        found = dir;
-                        break;
+            console.log("domain.root: " + dom.root);
+            if (dom.root) {
+                if (typeof dom.root == 'string') {
+                    dom.root = DomainMiddleware.parseDomRootString(dom.root);
+                    if (!dom.root)
+                        dom.root = nodepath.parse(process.argv[1]).dir;
+                }
+                else if (Array.isArray(dom.root)) {
+                    var found = void 0;
+                    for (var _i = 0, _a = dom.root; _i < _a.length; _i++) {
+                        var dir = _a[_i];
+                        found = DomainMiddleware.parseDomRootString(dir);
+                        if (found)
+                            break;
+                    }
+                    if (found) {
+                        dom.root = found;
+                    }
+                    else {
+                        dom.root = nodepath.parse(process.argv[1]).dir;
                     }
                 }
-                if (found) {
-                    dom.root = found;
-                    console.log("use dom root: " + found);
-                }
             }
+            else {
+                console.log("Errisy Server Warning: Root of \"" + dom.domain + "\" is undefined!");
+                dom.root = nodepath.parse(process.argv[1]).dir;
+            }
+            console.log("Errisy Server: { Domain: \"" + dom.domain + "\", Root: \"" + dom.root + "\" }");
+            console.log(dom.middlewares);
             if (dom.domain)
-                dom.regex = new RegExp(dom.domain, dom.options ? dom.options : 'ig');
+                dom.regex = dom.regex ? dom.regex : new RegExp('', 'ig');
             return dom;
         });
     }
+    DomainMiddleware.parseDomRootString = function (value) {
+        if (value && (value == '' || value == '/' || /^\./.test(value))) {
+            var rootparsed = nodepath.parse(nodepath.parse(process.argv[1]).dir + value);
+            var dir = rootparsed.dir + "/" + rootparsed.name;
+            console.log("combined dir is " + dir);
+            if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+                return dir;
+            }
+            else {
+                return undefined;
+            }
+        }
+        else if (value) {
+            if (fs.existsSync(value) && fs.statSync(value).isDirectory()) {
+                return value;
+            }
+            else {
+                return undefined;
+            }
+        }
+        else {
+            return undefined;
+        }
+    };
     DomainMiddleware.prototype.handler = function (request, response) {
         return __awaiter(this, void 0, void 0, function () {
             var host, i, domain, j, middleware, ex_2;
@@ -254,7 +278,6 @@ var DomainMiddleware = (function () {
                     case 1:
                         if (!(i < this.domains.length)) return [3 /*break*/, 9];
                         domain = this.domains[i];
-                        domain.regex.lastIndex = undefined;
                         domain.regex.lastIndex = undefined;
                         if (!domain.regex.test(host)) return [3 /*break*/, 8];
                         request['$DomainRootDir'] = domain.root;
@@ -513,6 +536,7 @@ var FileUtilities = (function () {
                             }
                             readStream = fs.createReadStream(filename, { start: start, end: end });
                             readStream.pipe(response);
+                            //console.log(request.url, maxSize, statusCode);
                         }
                         return [2 /*return*/];
                 }
@@ -537,7 +561,7 @@ var FileWhiteListMiddleware = (function () {
                 switch (_a.label) {
                     case 0:
                         link = url.parse(decodeURI(request.url));
-                        domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
+                        domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __StartUpDir;
                         filename = domainRootDir + decodeURI(link.pathname);
                         relativePath = link.pathname;
                         if (/\/$/.test(filename)) {
@@ -624,6 +648,7 @@ var FileWhiteListMiddleware = (function () {
                             }
                             readStream = fs.createReadStream(filename, { start: start, end: end });
                             readStream.pipe(response);
+                            //console.log(request.url, maxSize, statusCode);
                         }
                         //the file is processed here, stop passing to the next middleware
                         return [2 /*return*/, false];
@@ -647,7 +672,7 @@ var FrontEndRouterMiddleware = (function () {
                         link = url.parse(decodeURI(request.url));
                         found = this.routes.find(function (route) { return Array.isArray(route.patterns) && route.patterns.length > 0 && route.patterns.some(function (ptn) { return ((ptn.lastIndex = undefined), ptn.test(link.pathname)); }); });
                         if (!found) return [3 /*break*/, 2];
-                        domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
+                        domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __StartUpDir;
                         filename = nodepath.join(domainRootDir, decodeURI(found.file));
                         return [4 /*yield*/, FileUtilities.PipeFile(request, response, filename)];
                     case 1: return [2 /*return*/, _a.sent()];
@@ -673,7 +698,7 @@ var FileMiddleware = (function () {
                 switch (_a.label) {
                     case 0:
                         link = url.parse(decodeURI(request.url));
-                        domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
+                        domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __StartUpDir;
                         filename = domainRootDir + decodeURI(link.pathname);
                         if (/\/$/.test(filename))
                             filename += this.defaultFile;
@@ -750,6 +775,7 @@ var FileMiddleware = (function () {
                             }
                             readStream = fs.createReadStream(filename, { start: start, end: end });
                             readStream.pipe(response);
+                            //console.log(request.url, maxSize, statusCode);
                         }
                         //the file is processed here, stop passing to the next middleware
                         return [2 /*return*/, false];
@@ -770,7 +796,7 @@ var DirectoryMiddleware = (function () {
                 switch (_a.label) {
                     case 0:
                         link = url.parse(request.url);
-                        domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
+                        domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __StartUpDir;
                         filename = domainRootDir + decodeURI(link.pathname);
                         _a.label = 1;
                     case 1:
@@ -1156,7 +1182,7 @@ var RPCMiddleware = (function () {
                         process: process,
                         $__required: required_1
                     });
-                    var _script = vm.createScript(code);
+                    var _script = new vm.Script(code); //vm.createScript(code);
                     var fn = _script.runInContext(context);
                     var exported = fn();
                     if (!exported)
@@ -1221,7 +1247,7 @@ var RPCMiddleware = (function () {
                             $__required: required,
                             module: undefined
                         });
-                        _script = vm.createScript(code);
+                        _script = new vm.Script(code);
                         code = undefined;
                         fn = _script.runInContext(context);
                         $module = fn();
@@ -1240,16 +1266,17 @@ var RPCMiddleware = (function () {
                 switch (_b.label) {
                     case 0:
                         link = url.parse(decodeURI(request.url));
+                        //console.log(`RPC url: ${link.pathname}`);
                         if (!/\.rpc\.js$/ig.test(link.pathname))
                             return [2 /*return*/, true];
-                        domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __dirname;
+                        domainRootDir = request['$DomainRootDir'] ? request['$DomainRootDir'] : __StartUpDir;
                         filename = domainRootDir + link.pathname;
                         that = this;
                         _b.label = 1;
                     case 1:
                         _b.trys.push([1, 3, , 4]);
                         if (!efs.exists)
-                            return [2 /*return*/, Response404(response, link.path)];
+                            Response404(response, link.path);
                         return [4 /*yield*/, efs.stat(filename)];
                     case 2:
                         stats = _b.sent();
@@ -1258,7 +1285,8 @@ var RPCMiddleware = (function () {
                         return [3 /*break*/, 4];
                     case 3:
                         ex_8 = _b.sent();
-                        return [2 /*return*/, Response404(response, link.path)];
+                        Response404(response, link.path);
+                        return [2 /*return*/, true];
                     case 4:
                         method = request.method.toUpperCase();
                         _a = method;
@@ -1301,7 +1329,7 @@ var RPCMiddleware = (function () {
                         return [4 /*yield*/, ($instance[memberName].apply($instance, rpcArgs))];
                     case 14:
                         result = _b.sent();
-                        if (result instanceof rpc.RawResponse) {
+                        if (result instanceof rpc_1.RawResponse) {
                             return [2 /*return*/]; //nothing to do there
                         }
                         else {
@@ -1321,7 +1349,7 @@ var RPCMiddleware = (function () {
                     case 15:
                         ex_9 = _b.sent();
                         console.log("***** RPC Call Error " + (new Date).toLocaleTimeString() + " *****\n", ex_9);
-                        if (ex_9 instanceof rpc.RPCError) {
+                        if (ex_9 instanceof rpc_1.RPCError) {
                             response.writeHead(200, {
                                 "Content-Type": "application/json"
                             });
@@ -1368,6 +1396,7 @@ var SYSMiddleware = (function () {
             var link;
             return __generator(this, function (_a) {
                 link = url.parse(decodeURI(request.url));
+                //console.log(`SysMiddleware: ${link.pathname}`);
                 if (/\.sys\.js$/ig.test(link.pathname)) {
                     Response404(response, link.path);
                     return [2 /*return*/, false];
